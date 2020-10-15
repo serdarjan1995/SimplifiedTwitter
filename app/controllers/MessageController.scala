@@ -11,6 +11,7 @@ import reactivemongo.play.json._
 import compat._
 import json2bson._
 import play.modules.reactivemongo.{MongoController, ReactiveMongoApi, ReactiveMongoComponents}
+import reactivemongo.api.Cursor
 import models.Message
 import Message._
 import java.util.UUID
@@ -72,14 +73,17 @@ class MessageController @Inject()(
 
     /**
      * Read Message
+     * TODO
      */
-    def read(id: String) = Action { implicit request =>
-        Ok("Not implemented yet. Requested id "+id)
-
+    def read(id: String) = Action.async { implicit request =>
+        //Ok("Not implemented yet. Requested id "+id)
+        collection.flatMap(_.find(BSONDocument("_id" -> id)).one[Message])
+          .map(message => Ok(Json.toJsObject(message)))
     }
 
     /**
-     * Update Message
+     * Update
+     * TODO
      */
     def update = Action {
         Ok("Not implemented yet")
@@ -87,6 +91,7 @@ class MessageController @Inject()(
 
     /**
      * Delete Message
+     * TODO
      */
     def delete(id: String) = Action.async { implicit request =>
         val username = request.headers.get("x-username").orNull
@@ -97,10 +102,8 @@ class MessageController @Inject()(
                 "message"-> "X-Username header is null")))
         }
         else{
-            Future.successful(Ok(Json.obj(
-                "status" -> "success",
-                "errors" -> true,
-                "message"-> "Not implemented yet")))
+            collection.flatMap(_.delete.one(BSONDocument("_id" -> id,"username" -> username)))
+              .map(_ => NoContent)
         }
 
 
@@ -108,16 +111,28 @@ class MessageController @Inject()(
 
     /**
      * Find Messages
+     * TODO
      */
     def find = Action { implicit request =>
 
-        val tagQuery = request.queryString.get("tag")
+        val tagQuery : String = request.queryString.get("tag")
             .flatMap(_.headOption).getOrElse("none")
-        val countQuery = request.queryString.get("count")
-          .flatMap(_.headOption).getOrElse("none")
-        val pageQuery = request.queryString.get("page")
-          .flatMap(_.headOption).getOrElse("none")
-        Ok(tagQuery+countQuery+pageQuery)
+        val countQuery : Int = request.queryString.get("count")
+          .flatMap(_.headOption).getOrElse(10).asInstanceOf[Int]
+        val pageQuery : Int = request.queryString.get("page")
+          .flatMap(_.headOption).getOrElse("none").asInstanceOf[Int]
+
+
+        val query = BSONDocument("tags.tag" -> tagQuery)
+
+        val result = collection.map(
+            _.find(query).batchSize(countQuery).cursor[Message]()
+              .collect[List](countQuery, Cursor.FailOnError[List[Message]]())
+        )
+
+
+        Ok(Json.obj("messages" -> "result"))
+
     }
 
 }
